@@ -1,115 +1,61 @@
 # NOTE: subsets are done when mapping
 
 
-#' x = CAPTURES()
-CAPTURES <- function() {
-
-  x <- DBq("SELECT UL,LL,UR,LR, tagID, lat, lon, datetime_ FROM CAPTURES c JOIN  GPS_POINTS g
-            ON g.gps_id = c.gps_id AND g.gps_point = c.gps_point
-              WHERE ID not in (SELECT ID FROM CAPTURES where dead = 1)")
-  
-  x[!is.na(LL), LR := LL]
-  x[, tagID := str_remove(tagID, "^0")]
-
-  x[, combo := make_combo(.SD, short = "LR")]
-  x[, combo := glue_data(.SD, "{combo}")]
-  #x[, combo := glue_data(.SD, "{combo}[{ ifelse(is.na(tagID), '', tagID)}]")]
-  #x[, combo := str_remove(combo, "\\[\\]")]
-
-  x[, lastCaptured := max(datetime_), by = .(combo)]
-
-  x <- x[lastCaptured == datetime_]
-
-  x[, capturedDaysAgo := difftime(Sys.time(), lastCaptured, units = "days") |> as.numeric() |> round(1)]
-
-
-  x
-
-}
-
-#' x = RESIGHTINGS()
-RESIGHTINGS <- function() {
-  x = DBq('SELECT r.UR, r.UL, r.LR, r.LL, lat, lon, datetime_ - interval 8  hour  datetime_  from
-              GPS_POINTS g
-              JOIN
-                  RESIGHTINGS r ON
-                      g.gps_id = r.gps_id AND g.gps_point = r.gps_point_start
-                  ')
-  x[!is.na(LL), LR := LL]
-  x[, combo := make_combo(.SD, short = "LR")][, ":="(UL = NULL, LL = NULL, UR = NULL, LR = NULL)]
-
-  cc = DBq("SELECT distinct UL,LL,UR,LR,tagID FROM CAPTURES")
-  cc[!is.na(LL), LR := LL]
-  cc[, combo :=  make_combo(.SD, short = "LR")]
-  cc[, ":="(UL = NULL, LL = NULL, UR = NULL, LR = NULL)]
-  
-  x = merge(x, cc, by = "combo", allow.cartesian = TRUE)
-
-
-  x[,lastSeen := max(datetime_), by = .(combo) ]
-  x = x[lastSeen == datetime_]
-
-  x[, seenDaysAgo := difftime(Sys.time(), lastSeen, units = "days") |> as.numeric() |> round(1)]
-
-
-  colbyID(x)
-
-}
-
 #' n = NESTS()
 NESTS <- function() {
   # last state
-  n = DBq('SELECT nest_id nest, species, max(CONCAT_WS(" ",date,time_visit)) datetime_, nest_state
+  n = DBq('SELECT nest_id, species, max(CONCAT_WS(" ",date,time_visit)) datetime_, nest_state
                         FROM NESTS
                           GROUP BY species, nest_id, nest_state')
 
-  setorder(n, nest)
-  n[, lastd := max(datetime_), by = .(nest)]
+  setorder(n, nest_id)
+  n[, lastd := max(datetime_), by = .(nest_id)]
   n = n[datetime_ == lastd][, lastd := NULL]
   n[, lastCheck := difftime(Sys.time(), datetime_, units = "days") |> as.numeric() |> round(1)]
 
   # lat, lon for F state, species
-  g = DBq('SELECT n.gps_id, n.gps_point, CONCAT_WS(" ",n.date,n.time_visit) datetime_found, n.nest_id nest, lat, lon
+  g = DBq('SELECT n.gps_id, n.gps_point, CONCAT_WS(" ",n.date,n.time_visit) datetime_found, n.nest_id, lat, lon
                   FROM NESTS n JOIN GPS_POINTS g on n.gps_id = g.gps_id AND n.gps_point = g.gps_point
                     WHERE n.gps_id is not NULL and n.nest_state = "F"')
   g[, datetime_ := as.POSIXct(datetime_found)]
 
-  g = g[, .(lat = mean(lat), lon = mean(lon), datetime_found = min(datetime_found)), .(nest)]
+  g = g[, .(lat = mean(lat), lon = mean(lon), datetime_found = min(datetime_found)), .(nest_id)]
 
-  n = merge(n, g, by = c("nest"), all.x = TRUE)
+  n = merge(n, g, by = "nest_id", all.x = TRUE)
   n[, datetime_found := as.POSIXct(datetime_found)]
   n[, firstCheck := difftime(Sys.time(), datetime_found, units = "days") |> as.numeric() |> round(1)]
 
   # clutch size
-  cs = DBq("SELECT  nest_id nest, min(clutch_size) iniClutch, max(clutch_size) clutch FROM NESTS GROUP BY nest")
+  cs = DBq("SELECT  nest_id, min(clutch_size) iniClutch, max(clutch_size) clutch FROM NESTS GROUP BY nest_id")
 
   # collected
-  e = DBq("select distinct nest_id nest from NESTS where nest_state = 'C' ")
+  e = DBq("select distinct nest_id from NESTS where nest_state = 'C' ")
   e[, collected := 1]
 
   # days till hatching
-  dth = DBq("SELECT * FROM EGGS ")
-  h = hatching_table()
+  dth = DBq("SELECT * FROM EGGS")
+  h = hatching_table() # TODO
   dth = merge(dth, h, by = c("float_angle", "float_surface"))
   dth[, est_hatch_date := date + days_till_hatching]
   dth[, days_till_hatching := difftime(est_hatch_date, Sys.time(), units = "days") |> as.numeric() |> round(1)]
-  dth = dth[, .(est_hatch_date = min(est_hatch_date), days_till_hatching = min(days_till_hatching)), by = nest]
+  dth = dth[, .(est_hatch_date = min(est_hatch_date), days_till_hatching = min(days_till_hatching)), by = nest_id]
+  
 
   # male, female confirmed identity
-  id = DBq("SELECT distinct n.nest_id nest ,c.ID , c.sex_observed sex
+  id = DBq("SELECT distinct n.nest_id, c.ring , c.field_sex sex
                 from NESTS n
                  left join CAPTURES c on c.nest_id = n.nest_id
-                   where c.ID is not NULL")
-  id = dcast(id, nest ~ sex, value.var = "ID")
+                   where c.ring is not NULL")
+  id = dcast(id, nest_id ~ sex, value.var = "ring")
 
   # prepare final set
   setnames(n, "nest_state", "last_state")
   
-  o = merge(n, cs,  by = "nest", all.x = TRUE)
-  o = merge(o, e,   by = "nest", all.x = TRUE)
+  o = merge(n, cs,  by = "nest_id", all.x = TRUE)
+  o = merge(o, e,   by = "nest_id", all.x = TRUE)
   o[is.na(collected), collected := 0]
-  o = merge(o, dth, by = "nest", all.x = TRUE)
-  o = merge(o, id,  by = "nest", all.x = TRUE)
+  o = merge(o, dth, by = "nest_id", all.x = TRUE)
+  o = merge(o, id,  by = "nest_id", all.x = TRUE)
 
   o
 }

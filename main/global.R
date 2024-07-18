@@ -26,7 +26,6 @@
     "leaflet.extras"
   ), require, character.only = TRUE, quietly = TRUE)
 
-  data(OsterFeinerMoor, package = "wadeR")
 
 
 

@@ -106,7 +106,7 @@ shinyServer(function(input, output, session) {
   }
  
   # crosscheck with getOption('dbtabs_view')
-  output$OBSERVERS_show     = TABLE_show("OBSERVERS")      
+  output$OBSERVERS_show   = TABLE_show("OBSERVERS")      
   output$CAPTURES_show    = TABLE_show("CAPTURES")       
   output$RESIGHTINGS_show = TABLE_show("RESIGHTINGS")       
   output$CHICKS_show      = TABLE_show("CHICKS")       
@@ -131,12 +131,12 @@ shinyServer(function(input, output, session) {
         )
       }
 
-      n[, N := .N, nest]
+      n[, N := .N, nest_id]
       doubleEntry = n[N > 1]
       
       if (nrow(doubleEntry) > 0) {
         WarnToast(
-          glue("Nests with inconsistent states: {paste( unique(doubleEntry$nest), collapse = ';')} ")
+          glue("Nests with inconsistent states: {paste( unique(doubleEntry$nest_id), collapse = ';')} ")
         )
       }
 
@@ -144,41 +144,15 @@ shinyServer(function(input, output, session) {
     }
   })
 
-#* STATIC NESTS MAP
-  output$map_nests_show = renderPlot({
 
-    n = N()
-    grandN = nrow(n)
-    req(n)
-    n = subsetNESTS(n, state = input$nest_state, sp = input$nest_species, d2h = input$days_to_hatch)
 
-    map_nests(n,size  = input$nest_size, grandTotal = grandN)
-    
-  })
-
-  output$map_nests_pdf = downloadHandler(
-    filename = "map_nests.pdf",
-    content = function(file) {
-      
-      n = N()
-      grandN = nrow(n)
-
-      req(n)
-      n = subsetNESTS(n, state = input$nest_state, sp = input$nest_species, d2h = input$days_to_hatch)
-
-      cairo_pdf(file = file, width = 11, height = 8.5)
-      map_nests(n,size  = input$nest_size, grandTotal = grandN) |> print()
-      dev.off()
-    }
-  )
-
-#* DYNAMIC NESTS MAP
+#* NESTS MAP
   leafmap = leaflet_map(x=getOption("studySiteCenter")[1],y=getOption("studySiteCenter")[2]) 
 
   output$nest_dynmap_show = renderLeaflet(leafmap)
 
   observeEvent(
-    list(input$main == "LIVE NEST MAP"), {
+    list(input$main == "NEST MAP"), {
 
       n = N()
       req(n)
@@ -195,7 +169,7 @@ shinyServer(function(input, output, session) {
           fillOpacity = 0.5,
           opacity     = 0.5,
           radius      = ~3,
-          label       = ~nest
+          label       = ~nest_id
         )
     }
   
@@ -208,8 +182,7 @@ shinyServer(function(input, output, session) {
       {
       n = N()
       req(n)
-      x = n[, .(nest,species,datetime_, lastCheck, last_state, iniClutch,clutch,collected,est_hatch_date, days_till_hatching, F, M)]
-      setorder(x, days_till_hatching)
+      setorder(n, days_till_hatching)
 
       },
       server        = FALSE,
