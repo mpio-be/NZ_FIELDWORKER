@@ -55,7 +55,9 @@
   db   = cnf$database
 
 
-  # UI elements
+  sites = c('MS', 'CR', 'KK', 'KT', 'MR', 'TP', 'MB', 'TS', 'OD', 'TR', 'TA', 'PR')
+
+# UI elements
   comments = column_comment(
     user           = user,
     host           = host,
@@ -65,22 +67,23 @@
     excludeColumns = excludeColumns
   )
 
-  uitable = 
-    emptyFrame(   
-    user           = user,
-    host           = host,
-    db             = db,
-    pwd            = pwd,
-    table          = tableName,
-    excludeColumns = excludeColumns,
-    n              = n_empty_lines, 
-    preFilled = list(
-      date = format(Sys.Date(), "%Y-%m-%d"),
-      species = "NOLA" #,
-      # UL   = "M", 
-      # UR   = "W"
-    )
-    ) |> 
+  uitable =
+    emptyFrame(
+      user = user,
+      host = host,
+      db = db,
+      pwd = pwd,
+      table = tableName,
+      excludeColumns = excludeColumns,
+      n = n_empty_lines,
+      preFilled = list(
+        date = format(Sys.Date(), "%Y-%m-%d"),
+        species = "NOLA" # ,
+        # UL   = "M",
+        # UR   = "W"
+      )
+    ) |>
     rhandsontable(afterGetColHeader = js_hot_tippy_header(comments, "description")) |>
-      hot_cols(columnSorting = FALSE, manualColumnResize = TRUE) |>
-      hot_rows(fixedRowsTop = 1) 
+    hot_cols(columnSorting = FALSE, manualColumnResize = TRUE) |>
+    hot_rows(fixedRowsTop = 1) |>
+    hot_col(col = "site", type = "autocomplete", source = sites,strict = FALSE)
