@@ -1,15 +1,15 @@
-## FIELDWORKER
+## NZ_FIELDWORKER
 
 __Fieldworker__ is a modular application for organizing fieldwork. 
 
 ### Directory structure
 
 ```
-📦FIELDWORKER
+📦NZ_FIELDWORKER
  ┣ 📂Admin
  ┃ ┗ 📜db_structure.SQL
  ┣ 📂DataEntry
- ┃ ┣ 📂AUTHORS
+ ┃ ┣ 📂OBSERVERS
  ┃ ┣ 📂CAPTURES
  ┃ ┣ 📂EGGS
  ┃ ┣ 📂NESTS

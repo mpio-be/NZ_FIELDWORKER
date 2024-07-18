@@ -13,8 +13,8 @@
     "tableHTML", 
     "glue", 
     "stringr", 
-    "beR",
-    "dbo", 
+    "beR",   # remotes::install_github('mpio-be/beR')
+    "dbo",           # remotes::install_github('mpio-be/dbo') 
     "configr"
   ), require, character.only = TRUE, quietly = TRUE)
   tags = shiny::tags
@@ -47,7 +47,7 @@
   tableName       = "EGGS"
   excludeColumns  = c("pk", "nov")
   n_empty_lines   = 20
-  SERVER          = "nola24"
+  SERVER          = "nz_fieldworker"
   cnf = read.config(getOption("dbo.my.cnf"))[[SERVER]]
   user = cnf$user
   host = cnf$host

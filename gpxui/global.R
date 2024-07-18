@@ -22,7 +22,7 @@
   options(dbo.tz = "CET")
 
 #* Variables
-  SERVER        = "nola24"
+  SERVER        = "nz_fieldworker"
   DB            = "FIELD_2024_NOLAatDUMMERSEE"
   GPS_IDS       = 1:15
   EXPORT_TABLES = c("nest_locations")

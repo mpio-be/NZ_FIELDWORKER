@@ -5,7 +5,7 @@
 
 #! SETTINGS
   sapply(c(
-    "DataEntry", # remotes::install_github('mpio-be/DataEntry')
+    "DataEntry",            # remotes::install_github('mpio-be/DataEntry')
     "DataEntry.validation", # remotes::install_github('mpio-be/DataEntry.validation')
     "shinyjs", 
     "shinyWidgets",
@@ -13,8 +13,8 @@
     "tableHTML", 
     "glue", 
     "stringr", 
-    "beR",
-    "dbo", 
+    "beR",                  # remotes::install_github('mpio-be/beR')
+    "dbo",                  # remotes::install_github('mpio-be/dbo') 
     "configr"
   ), require, character.only = TRUE, quietly = TRUE)
   tags = shiny::tags
@@ -47,7 +47,7 @@
   tableName       = "CAPTURES"
   excludeColumns  = c("pk", "nov")
   n_empty_lines   = 10
-  SERVER          = "nola24"
+  SERVER          = "nz_fieldworker"
   cnf = read.config(getOption("dbo.my.cnf"))[[SERVER]]
   user = cnf$user
   host = cnf$host

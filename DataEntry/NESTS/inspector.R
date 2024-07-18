@@ -53,8 +53,8 @@ list(
   x[, .(author, rowid)] |>
     is.element_validator(v = data.table(
       variable = "author",
-      set = list(DBq("SELECT author ii FROM AUTHORS")$ii),
-      reason = "entry not in the AUTHORS table"
+      set = list(DBq("SELECT author ii FROM OBSERVERS")$ii),
+      reason = "entry not in the OBSERVERS table"
     )) |> try_validator(nam = "val1")
   ,
 

@@ -59,9 +59,9 @@ RESIGHTINGS <- function() {
 #' n = NESTS()
 NESTS <- function() {
   # last state
-  n = DBq('SELECT nest, species, max(CONCAT_WS(" ",date,time_appr)) datetime_, nest_state
+  n = DBq('SELECT nest_id nest, species, max(CONCAT_WS(" ",date,time_visit)) datetime_, nest_state
                         FROM NESTS
-                          GROUP BY species, nest, nest_state')
+                          GROUP BY species, nest_id, nest_state')
 
   setorder(n, nest)
   n[, lastd := max(datetime_), by = .(nest)]
@@ -69,7 +69,7 @@ NESTS <- function() {
   n[, lastCheck := difftime(Sys.time(), datetime_, units = "days") |> as.numeric() |> round(1)]
 
   # lat, lon for F state, species
-  g = DBq('SELECT n.gps_id, n.gps_point, CONCAT_WS(" ",n.date,n.time_appr) datetime_found, n.nest, lat, lon
+  g = DBq('SELECT n.gps_id, n.gps_point, CONCAT_WS(" ",n.date,n.time_visit) datetime_found, n.nest_id nest, lat, lon
                   FROM NESTS n JOIN GPS_POINTS g on n.gps_id = g.gps_id AND n.gps_point = g.gps_point
                     WHERE n.gps_id is not NULL and n.nest_state = "F"')
   g[, datetime_ := as.POSIXct(datetime_found)]
@@ -81,24 +81,24 @@ NESTS <- function() {
   n[, firstCheck := difftime(Sys.time(), datetime_found, units = "days") |> as.numeric() |> round(1)]
 
   # clutch size
-  cs = DBq("SELECT  nest, min(clutch_size) iniClutch, max(clutch_size) clutch FROM NESTS GROUP BY nest")
+  cs = DBq("SELECT  nest_id nest, min(clutch_size) iniClutch, max(clutch_size) clutch FROM NESTS GROUP BY nest")
 
   # collected
-  e = DBq("select distinct nest from NESTS where nest_state = 'C' ")
+  e = DBq("select distinct nest_id nest from NESTS where nest_state = 'C' ")
   e[, collected := 1]
 
   # days till hatching
   dth = DBq("SELECT * FROM EGGS ")
   h = hatching_table()
-  dth = merge(dth, h, by = c("float_angle", "surface"))
+  dth = merge(dth, h, by = c("float_angle", "float_surface"))
   dth[, est_hatch_date := date + days_till_hatching]
   dth[, days_till_hatching := difftime(est_hatch_date, Sys.time(), units = "days") |> as.numeric() |> round(1)]
   dth = dth[, .(est_hatch_date = min(est_hatch_date), days_till_hatching = min(days_till_hatching)), by = nest]
 
   # male, female confirmed identity
-  id = DBq("SELECT distinct n.nest,c.ID , c.sex_observed sex
+  id = DBq("SELECT distinct n.nest_id nest ,c.ID , c.sex_observed sex
                 from NESTS n
-                 left join CAPTURES c on c.nest = n.nest
+                 left join CAPTURES c on c.nest_id = n.nest_id
                    where c.ID is not NULL")
   id = dcast(id, nest ~ sex, value.var = "ID")
 

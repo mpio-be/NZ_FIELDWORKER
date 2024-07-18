@@ -23,7 +23,7 @@ expand_numeric_string <- function(x) {
 nest2species <- function(nest) {
   sapply(nest, function(x) {
     n <- substr(x, 1, 1)
-    ifelse(n == "N", "NOLA", NA)
+    ifelse(n == "B", "BADO", NA)
 
   })
 }
@@ -56,8 +56,8 @@ tagID_from_combo <- function(co) {
 }
 
 hatching_table <- function() {
-
-  x = fread('float_angle	surface	days_till_hatching
+# TODO
+  x = fread('float_angle	float_surface	days_till_hatching
     30	0	25
     35	0	24
     40	0	23
@@ -78,7 +78,7 @@ hatching_table <- function() {
   ')
 
 
-  x1 = data.table(float_angle = 10:90, surface = 0)
+  x1 = data.table(float_angle = 10:90, float_surface = 0)
 
   o = merge(x, x1, all = TRUE)
 

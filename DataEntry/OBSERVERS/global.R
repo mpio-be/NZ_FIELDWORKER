@@ -1,7 +1,7 @@
 
 
 
-#' shiny::runApp('./DataEntry/AUTHORS', launch.browser = TRUE, port = 1234)
+#' shiny::runApp('./DataEntry/OBSERVERS', launch.browser = TRUE, port = 1234)
 
 #! SETTINGS
   sapply(c(
@@ -13,8 +13,8 @@
     "tableHTML", 
     "glue", 
     "stringr", 
-    "beR",
-    "dbo", 
+    "beR",                   # remotes::install_github('mpio-be/beR')
+    "dbo",                   # remotes::install_github('mpio-be/dbo') 
     "configr"
   ), require, character.only = TRUE, quietly = TRUE)
   tags = shiny::tags
@@ -31,7 +31,7 @@
   }
   
   describeTable <- function() {
-    x <- DBq("SELECT * FROM AUTHORS")
+    x <- DBq("SELECT * FROM OBSERVERS")
 
     data.table(
       N_entries    = nrow(x)
@@ -41,9 +41,9 @@
 
 
 #! PARAMETERS
-  tableName       = "AUTHORS"
+  tableName       = "OBSERVERS"
   n_empty_lines   = 10
-  SERVER          = "nola24"
+  SERVER          = "nz_fieldworker"
   cnf = read.config(getOption("dbo.my.cnf"))[[SERVER]]
   user = cnf$user
   host = cnf$host

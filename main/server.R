@@ -106,7 +106,7 @@ shinyServer(function(input, output, session) {
   }
  
   # crosscheck with getOption('dbtabs_view')
-  output$AUTHORS_show     = TABLE_show("AUTHORS")      
+  output$OBSERVERS_show     = TABLE_show("OBSERVERS")      
   output$CAPTURES_show    = TABLE_show("CAPTURES")       
   output$RESIGHTINGS_show = TABLE_show("RESIGHTINGS")       
   output$CHICKS_show      = TABLE_show("CHICKS")       

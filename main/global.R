@@ -6,7 +6,7 @@
 #! PACKAGES & DATA
   sapply(
     c(
-    "dbo",
+    "dbo",           # remotes::install_github('mpio-be/dbo')
     "sf",
     "data.table",
     "stringr",
@@ -32,27 +32,27 @@
 
 #! OPTIONS
   options(
-    app_nam              = "FIELDWORKER",
-    server               = "nola24",
-    db                   = "FIELD_2024_NOLAatDUMMERSEE",
-    dbtabs_entry         = c("CAPTURES", "RESIGHTINGS", "CHICKS", "NESTS", "EGGS", "AUTHORS"),
-    dbtabs_view          = c("CAPTURES", "RESIGHTINGS", "CHICKS", "NESTS", "EGGS", "AUTHORS"),
-    species              = c("NOLA", "REDS"),
+    app_nam              = "NZ_FIELDWORKER",
+    server               = "nz_fieldworker",
+    db                   = "FIELD_2024_BADOatNZ",
+    dbtabs_entry         = c("CAPTURES", "RESIGHTINGS", "CHICKS", "NESTS", "EGGS", "OBSERVERS"),
+    dbtabs_view          = c("CAPTURES", "RESIGHTINGS", "CHICKS", "NESTS", "EGGS", "OBSERVERS"),
+    species              = c("BADO"),
     ggrepel.max.overlaps = 20,
-    studySiteCenter      = c(x = 8.341151, y = 52.55065)
+    studySiteCenter      = c(x = -4, y = 170)
   )
 
   options(shiny.autoreload = TRUE)
 
-  options(dbo.tz = "Europe/Berlin")
+  options(dbo.tz = "Pacific/Auckland")
 
 
 
 #! UI DEFAULTS
   
   ver                 = "v 0.0.1"
-  apptitle            = "DÜMMER-SEE"
-  pagetitle           = apptitle
+  apptitle            = "Aotearoa"
+  pagetitle           = "Banded dotterel"
   set_capturedDaysAgo = 3
   set_seenDaysAgo     = 3
 
