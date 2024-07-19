@@ -15,11 +15,11 @@ x[ , rowid := .I]
 
 list(
 # Mandatory values
-  x[, .(date, form_id,  gps_id, gps_point, ID, recapture, weight, rowid)] |>
+  x[, .(date, form_id,  gps_id, gps_point, ring, capture_status, weight, rowid)] |>
   is.na_validator() |> try_validator(nam = 1)
   ,
 
-  x[recapture == 0, .(tarsus, culmen, total_head, wing, crest, rowid)] |>
+  x[capture_status == "F", .(tarsus, culmen, total_head, wing, rowid)] |>
     is.na_validator("Mandatory at first capture.") |>
     try_validator(nam = 2)
   ,
@@ -27,7 +27,7 @@ list(
   x[, .(gps_id, gps_point, rowid)] |>
     is.na_validator() |>
     try_validator(nam = 'gps')
-  ,
+,
 
 # Re-enforce formats
   x[, .(date, rowid)] |>
@@ -84,11 +84,11 @@ list(
   
 ,
 # Values should be UNIQUE within their containing table
-  x[recapture == 0 & !is.na(ID), .(ID, rowid)] |>
+  x[recapture == "F" & !is.na(ID), .(ID, rowid)] |>
   is.duplicate_validator(
     v = data.table(
       variable = "ID",
-      set = list(DBq("SELECT distinct ID FROM CAPTURES")$ID)
+      set = list(DBq("SELECT distinct ring FROM CAPTURES")$ID)
       ),
     reason = "Metal band already in use! Is this a recapture?"
   ) |> try_validator(nam = 12)

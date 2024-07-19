@@ -39,3 +39,16 @@ dfsys_output <- function( x = dfsys() ) {
 
 
 }
+
+# install app locally as a shiny server App 
+appInst <- function(app = app_nam){
+
+  to = paste0('/srv/shiny-server/', app_nam)
+
+  if (fs::dir_exists(to)) {
+    fs::dir_delete(to)
+  }
+
+  fs::dir_copy(getwd(), to)
+
+}

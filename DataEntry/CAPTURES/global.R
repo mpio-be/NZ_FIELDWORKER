@@ -78,7 +78,7 @@
       n = n_empty_lines,
       preFilled = list(
         date = format(Sys.Date(), "%Y-%m-%d"),
-        species = "NOLA" # ,
+        species = "BADO" # ,
         # UL   = "M",
         # UR   = "W"
       )
@@ -86,4 +86,5 @@
     rhandsontable(afterGetColHeader = js_hot_tippy_header(comments, "description")) |>
     hot_cols(columnSorting = FALSE, manualColumnResize = TRUE) |>
     hot_rows(fixedRowsTop = 1) |>
-    hot_col(col = "site", type = "autocomplete", source = sites,strict = FALSE)
+    # autocompletion columns
+    hot_col(col = "site", type = "autocomplete", source = sites,strict = TRUE)

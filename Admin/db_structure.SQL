@@ -1,4 +1,6 @@
--- Active: 1721241487455@@127.0.0.1@3306@FIELD_2024_BADOatNZ
+-- Active: 1721374781990@@127.0.0.1@3306
+
+-- COMMENT-s can be styled with html markup. 
 
 DROP DATABASE IF EXISTS FIELD_2024_BADOatNZ;
 
@@ -20,9 +22,12 @@ CREATE TABLE OBSERVERS (
   remarks TEXT                               DEFAULT NULL COMMENT 'Please provide any relevant information, such as your ratings in cooking, chess, or poker.'
 ) ENGINE=InnoDB;
 
+DROP TABLE CAPTURES;
+
 CREATE TABLE CAPTURES (
   species varchar(50)                  DEFAULT NULL COMMENT '4-letter species code, e.g. BADO, WRYB, SNZD, BFDO',
-  site char(2)                         DEFAULT NULL COMMENT '2-letter abbreviation for the site of capture (MS = Motueka Spit, CR = Cass River, KK = Kaikoura, KT = Kaitorete Spit, MR = Macaulay River, TP = Tiwai Point, MB = Maryburn, TS = Tasman, OD = Ohau Downs, TR = Tekapo River, TA = Te Anau, PR = Pisa Range',
+  site char(2)                         DEFAULT NULL COMMENT 
+        '2-letter abbreviation for the site of capture<hr> MS = Motueka Spit<br>, CR = Cass River<br>, KK = Kaikoura<br>, KT = Kaitorete Spit<br>, MR = Macaulay River<br>, TP = Tiwai Point<br>, MB = Maryburn<br>, TS = Tasman<br>, OD = Ohau Downs<br>, TR = Tekapo River<br>, TA = Te Anau<br>, PR = Pisa Range<br>',
   date date                            DEFAULT NULL COMMENT 'Date caught YYYY-MM-DD (local)',
   cap_start time                       DEFAULT NULL COMMENT 'hh:mm capture start (when you set the trap or commenced trapping with the mistnet)',
   caught time                          DEFAULT NULL COMMENT 'hh:mm time caught (local, NZDT or NZST)',

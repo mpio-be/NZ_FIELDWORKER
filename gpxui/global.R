@@ -23,6 +23,6 @@
 
 #* Variables
   SERVER        = "nz_fieldworker"
-  DB            = "FIELD_2024_NOLAatDUMMERSEE"
+  DB            = "FIELD_2024_BADOatNZ"
   GPS_IDS       = 1:15
   EXPORT_TABLES = c("nest_locations")
