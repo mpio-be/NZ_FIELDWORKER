@@ -131,7 +131,7 @@ CREATE TABLE CAPTURES (
     L = light green "lime" <br>
     M = metal <br> No flag assigned to tarsi.',
   tag_id  varchar(10)            
-    COMMENT 'ID of tag deployed or retrived',
+    COMMENT 'ID of tag deployed or retrieved',
   tag_action varchar(10)               
     COMMENT '
     "O" (nO tag: bird did not have a tag when captured and was released without a tag) <br>
@@ -171,7 +171,13 @@ CREATE TABLE CAPTURES (
     COMMENT 'fat score of captured individual, scored as the amount of visible fat in the furcular region or tracheal pit. 
     See Ringers'' Manual, British Trust for Ornithology, Thetford for more details.',
   `sample`  varchar(10)  
-    COMMENT 'Samples taken, comma separated: FP = feather_primary <br> FB = feather_breast <br> B = blood',
+    COMMENT 'Samples taken, comma separated: <br>
+    FP = feather_primary <br> 
+    FB = feather_breast <br> 
+    BQ = blood in Queen <br>
+    BF = blood on filter paper <br>
+    BE = blood in EDTA
+    ',
   cam_id varchar(255)                  
     COMMENT '2-character integer that is a unique ID of your field camera',
   photo_start varchar(255)             

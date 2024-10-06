@@ -26,7 +26,7 @@ list(
       v = fread("    
           variable   lq     uq
             book_id   1      5  
-            form_id   1      100
+            form_id   101    599
               gps_id  1      11
             gps_point 1      999"),
       reason = "Out of range value."
@@ -144,11 +144,11 @@ list(
     try_validator(nam = 12)
   ,
 
-  # Required (capture_status == "F")
-    x[capture_status == "F", 
+  # Required (capture_status == "F" & age == "A")
+    x[capture_status == "F" & age == "A", 
       .(gps_id, gps_point,field_sex,
       UL,UR,LL,LR,
-      culmen, tarsus,total_head,head_band,black_band,rufous_band,wing,
+      culmen, tarsus,total_head,head_white,head_black,rufous_band,wing,
       rowid)] |>
       is.na_validator("Required at first capture.") |>
       try_validator(nam = 13)

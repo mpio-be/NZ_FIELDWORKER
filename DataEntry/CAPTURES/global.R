@@ -42,6 +42,7 @@
   excludeColumns  = c("pk", "nov")
   n_empty_lines   = 10
   SERVER          = "nz_fieldworker"
+  SERVER          = "scidb_replica"
   cnf = read.config(getOption("dbo.my.cnf"))[[SERVER]]
   user = cnf$user
   host = cnf$host
