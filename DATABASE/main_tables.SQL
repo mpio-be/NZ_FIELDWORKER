@@ -11,8 +11,8 @@ CREATE TABLE IF NOT EXISTS OBSERVERS (
   observer varchar(3) DEFAULT NULL COMMENT 'Your initials. Use two or three letters. This is what you will use when entering data.',
   start date                   DEFAULT NULL COMMENT 'Start of work (YYYY-MM-DD)',
   stop date                    DEFAULT NULL COMMENT 'End of work (YYYY-MM-DD)',
-  gps_id tinyint unsigned DEFAULT NULL COMMENT 'Personal GPS ID',
-  cam_id varchar(255) DEFAULT NULL COMMENT 'Personal cameral ID',
+  gps_id varchar(255) DEFAULT NULL COMMENT 'Personal GPS ID or comma-separated list of GPS IDs (for example: 3 or 3,22)',
+  cam_id varchar(255) DEFAULT NULL COMMENT 'Personal camera ID or comma-separated list of camera IDs (for example: C4 or C4,C7)',
   nznbbs_number CHAR(4) DEFAULT NULL COMMENT 'Your 4-character New Zealand National Bird Banding Scheme (NZNBBS) certification number'
 ) ENGINE=InnoDB ;
 
@@ -143,7 +143,7 @@ CREATE TABLE `NESTS` (
   `nest_id` varchar(8) DEFAULT NULL COMMENT 'a 5- to 7-character string: SXXYY where, <br> S is either the Cass River plot (A, B, or C), or if elsewhere in NZ SS is the species (e.g., BA for banded dotterel), <br> XX = your GPS number (01 to 11) <br> YY = your running nest number (01 to 99). <br> Note: no negative nest_ids allowed in NESTS, these go into RESIGHTINGS. <br> The reserved code <b>NO_NEST</b> is for non-nest-linked events in other tables and is not valid in NESTS.',
   `nest_state` enum('S','F','I','H','pP','pD','P','D','notA','O') DEFAULT NULL COMMENT 'nest-state code for this visit. Examples include: <br> <b>S</b> (scrape, no eggs) <br> <b>F</b> (Found, visit of nest discovery) <br> <b>I</b> (incubated, active nest, warm eggs) <br> <b>H</b> (hatched, chicks seen) <br> <b>pP</b> (possibly predated) <br> <b>pD</b> (possibly deserted) <br> <b>P</b> (confident predated) <br> <b>D</b> (confident deserted) <br> <b>notA</b> (not Active, nest marks removed) <br> <b>O</b> (other; describe in comments)',
   `hatch_state` varchar(50) DEFAULT NULL COMMENT 'No. of eggs (1 to 4) followed by egg state: <br> <b>N</b> (no sign) <br> <b>S</b> (star) <br> <b>C</b> (crack) <br> <b>CC</b> (multiple or a big crack) <br> Examples: <br> <b>4N</b> <br> <b>2N2S</b> <br> <b>1N1S1C1CC</b>',
-  `bird_inc` enum('M','F','U','E') DEFAULT NULL COMMENT 'incubating or attending bird seen from a distance: <br> <b>M</b> (male) <br> <b>F</b> (female) <br> <b>U</b> (unknown) <br> <b>E</b> (nest empty; no bird seen)',
+  `bird_inc` enum('M','F','FM','MF','U','E') DEFAULT NULL COMMENT 'incubating or attending bird seen from a distance: <br> <b>M</b> (male) <br> <b>F</b> (female) <br> <b>FM</b> (both sexes seen at the nest) <br> <b>MF</b> (both sexes seen at the nest) <br> <b>U</b> (unknown) <br> <b>E</b> (nest empty; no bird seen)',
   `gps_id` tinyint(3) unsigned DEFAULT NULL COMMENT 'handheld Garmin GPS ID (recorded when nest_id is assigned at intial discovery: for both nests and broods)',
   `gps_point` int(10) unsigned DEFAULT NULL COMMENT 'waypoint number of the nest or brood location stored in your handheld Garmin GPS unit (recorded when nest_id is assigned at intial discovery: for both nests and broods)',
   `clutch_size` tinyint(3) unsigned DEFAULT NULL COMMENT 'Clutch size (number of eggs in the nest excluding hatched chicks)',

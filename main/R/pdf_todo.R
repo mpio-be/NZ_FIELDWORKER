@@ -5,7 +5,19 @@ todo_pdf_prepare_team_marks <- function(available_combos = NULL) {
         SELECT mark
         FROM AVAILABLE_COMBOS
         WHERE site_code = 'CR'
-        ORDER BY LL, LR
+        ORDER BY
+          CASE
+            WHEN LEFT(LL, 1) = 'Y' THEN 0
+            ELSE 1
+          END,
+          CASE
+            WHEN CONCAT(LL, LR) NOT REGEXP '[LR]' THEN 0
+            WHEN CONCAT(LL, LR) REGEXP 'R' THEN 2
+            WHEN CONCAT(LL, LR) REGEXP 'L' THEN 1
+            ELSE 0
+          END,
+          LL,
+          LR
       "),
       error = function(e) data.table(mark = character())
     )
