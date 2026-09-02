@@ -1911,8 +1911,14 @@ todo_unprocessed_nest AS (
       WHEN COALESCE(complete_clutch_processing_status.complete_clutch_has_float, 0) = 0 THEN 'float only'
       WHEN COALESCE(complete_clutch_processing_status.complete_clutch_has_photo, 0) = 0 THEN 'photos only'
     END AS notes,
-    DATEDIFF(active_nests.reference_date, processing_summary.first_processable_date) AS days_overdue,
-    200 + DATEDIFF(active_nests.reference_date, processing_summary.first_processable_date) AS priority,
+    DATEDIFF(
+      active_nests.reference_date,
+      adult_capture_age_status.clutch_completion_basis_date
+    ) AS days_overdue,
+    200 + DATEDIFF(
+      active_nests.reference_date,
+      adult_capture_age_status.clutch_completion_basis_date
+    ) AS priority,
     active_nests.min_days_to_hatch,
     active_nests.days_ago AS last_visit_days_ago,
     active_nests.nest_state,
