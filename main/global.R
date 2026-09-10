@@ -150,4 +150,4 @@ kmz_nest_state_cols <- c(
 
 #! etc
 
-ver <- "v 4.2.3"
+ver <- "v 4.2.4"
