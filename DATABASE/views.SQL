@@ -247,7 +247,18 @@ FROM candidate_combos candidate
 LEFT JOIN used_combos used
   ON candidate.LL = used.LL
  AND candidate.LR = used.LR
-WHERE used.LL IS NULL;
+WHERE used.LL IS NULL
+  AND candidate.LL <> 'YR'
+  AND candidate.LR NOT IN ('OR', 'RO')
+ORDER BY
+  CASE WHEN LEFT(candidate.LL, 1) = 'Y' THEN 0 ELSE 1 END,
+  CASE
+    WHEN CONCAT(candidate.LL, candidate.LR) NOT REGEXP '[LR]' THEN 0
+    WHEN CONCAT(candidate.LL, candidate.LR) REGEXP 'L' THEN 1
+    ELSE 2
+  END,
+  candidate.LL,
+  candidate.LR;
 
 
 CREATE OR REPLACE VIEW FIELD_2026_BADOatNZ.NESTS_LATEST AS
@@ -404,6 +415,7 @@ calibration_prediction AS (
     p.float_angle,
     p.float_surface,
     p.float_location,
+    CAST(AVG(p.days_since_laying) AS DECIMAL(5,1)) AS predicted_days_since_laying,
     CAST(MIN(p.days_since_laying) AS DECIMAL(5,1)) AS min_days_since_laying,
     CAST(MAX(p.days_since_laying) AS DECIMAL(5,1)) AS max_days_since_laying,
     COUNT(*) AS n_calibration
@@ -417,7 +429,9 @@ egg_calibration_candidates AS (
   SELECT
     e.pk AS egg_pk,
     e.nest_id,
+    e.date AS float_date,
     DATEDIFF(sr.reference_date, e.date) AS days_since_float,
+    calibration_prediction.predicted_days_since_laying,
     calibration_prediction.min_days_since_laying,
     calibration_prediction.max_days_since_laying,
     calibration_prediction.n_calibration,
@@ -475,18 +489,29 @@ egg_calibration_candidates AS (
 egg_hatch_prediction AS (
   SELECT
     egg_calibration_candidates.nest_id,
+    egg_calibration_candidates.float_date,
     egg_calibration_candidates.days_since_float,
-    calibration_hatch_day.hatch_day - egg_calibration_candidates.max_days_since_laying AS min_days_to_hatch_at_float
+    calibration_hatch_day.hatch_day - egg_calibration_candidates.predicted_days_since_laying AS days_to_hatch
   FROM egg_calibration_candidates
   CROSS JOIN calibration_hatch_day
   WHERE egg_calibration_candidates.row_num = 1
 ),
-nest_hatch_prediction AS (
+latest_float_prediction AS (
   SELECT
     nest_id,
-    MIN(min_days_to_hatch_at_float - days_since_float) AS min_days_to_hatch
+    MAX(float_date) AS latest_float_date
   FROM egg_hatch_prediction
   GROUP BY nest_id
+),
+nest_hatch_prediction AS (
+  SELECT
+    e.nest_id,
+    CAST(ROUND(AVG(e.days_to_hatch - e.days_since_float), 0) AS SIGNED) AS min_days_to_hatch
+  FROM egg_hatch_prediction e
+  JOIN latest_float_prediction lfp
+    ON e.nest_id = lfp.nest_id
+   AND e.float_date = lfp.latest_float_date
+  GROUP BY e.nest_id
 )
 SELECT
   n.nest_id,
@@ -683,11 +708,43 @@ WITH sr AS (
   WHERE variable = 'reference_date'
     AND value IS NOT NULL
 ),
+cr_nest_ids AS (
+  SELECT DISTINCT
+    n.nest_id
+  FROM FIELD_2026_BADOatNZ.NESTS n
+  CROSS JOIN sr
+  WHERE n.nest_id IS NOT NULL
+    AND TRIM(n.nest_id) <> ''
+    AND UPPER(TRIM(COALESCE(n.site, ''))) = 'CR'
+    AND n.date <= sr.reference_date
+),
+cr_current_nest_ids AS (
+  SELECT
+    latest_visit.nest_id
+  FROM (
+    SELECT
+      n.nest_id,
+      n.site,
+      ROW_NUMBER() OVER (
+        PARTITION BY n.nest_id
+        ORDER BY n.date DESC, n.time_visit DESC, n.pk DESC
+      ) AS row_num
+    FROM FIELD_2026_BADOatNZ.NESTS n
+    CROSS JOIN sr
+    WHERE n.nest_id IS NOT NULL
+      AND TRIM(n.nest_id) <> ''
+      AND n.date <= sr.reference_date
+  ) latest_visit
+  WHERE latest_visit.row_num = 1
+    AND UPPER(TRIM(COALESCE(latest_visit.site, ''))) = 'CR'
+),
 latest_nests AS (
   SELECT
     n.*,
     sr.reference_date
   FROM FIELD_2026_BADOatNZ.NESTS_LATEST n
+  JOIN cr_current_nest_ids
+    ON n.nest_id = cr_current_nest_ids.nest_id
   CROSS JOIN sr
 ),
 active_nests AS (
@@ -704,6 +761,7 @@ nest_history AS (
   CROSS JOIN sr
   WHERE n.nest_id IS NOT NULL
     AND TRIM(n.nest_id) <> ''
+    AND UPPER(TRIM(COALESCE(n.site, ''))) = 'CR'
     AND n.date <= sr.reference_date
 ),
 first_processable_visit AS (
@@ -755,6 +813,8 @@ float_visit_summary AS (
     COUNT(*) AS n_float_rows
   FROM FIELD_2026_BADOatNZ.EGGS e
   CROSS JOIN sr
+  JOIN cr_nest_ids
+    ON e.nest_id = cr_nest_ids.nest_id
   WHERE e.date <= sr.reference_date
     AND e.float_angle IS NOT NULL
     AND e.float_location IS NOT NULL
@@ -906,6 +966,7 @@ chick_captures AS (
   WHERE c.nest_id IS NOT NULL
     AND TRIM(c.nest_id) <> ''
     AND UPPER(TRIM(c.nest_id)) <> 'NO_NEST'
+    AND UPPER(TRIM(COALESCE(c.site, ''))) = 'CR'
     AND c.age = 'C'
     AND c.date <= sr.reference_date
   GROUP BY c.nest_id
@@ -918,6 +979,7 @@ hiding_spot_photos AS (
   CROSS JOIN sr
   WHERE r.nest_id IS NOT NULL
     AND TRIM(r.nest_id) <> ''
+    AND UPPER(TRIM(COALESCE(r.site, ''))) = 'CR'
     AND r.rclass = 'H'
     AND r.date <= sr.reference_date
   GROUP BY r.nest_id
@@ -982,6 +1044,7 @@ adult_capture_latest AS (
     WHERE c.nest_id IS NOT NULL
       AND TRIM(c.nest_id) <> ''
       AND UPPER(TRIM(c.nest_id)) <> 'NO_NEST'
+      AND UPPER(TRIM(COALESCE(c.site, ''))) = 'CR'
       AND c.age = 'A'
       AND c.field_sex IN ('M', 'MU', 'F', 'FU')
       AND c.date <= sr.reference_date
@@ -1018,6 +1081,7 @@ adult_capture_timing AS (
   WHERE c.nest_id IS NOT NULL
     AND TRIM(c.nest_id) <> ''
     AND UPPER(TRIM(c.nest_id)) <> 'NO_NEST'
+    AND UPPER(TRIM(COALESCE(c.site, ''))) = 'CR'
     AND c.age = 'A'
     AND c.field_sex IN ('M', 'MU', 'F', 'FU')
     AND c.date <= sr.reference_date
@@ -1042,6 +1106,7 @@ adult_capture_any_timing AS (
   WHERE c.nest_id IS NOT NULL
     AND TRIM(c.nest_id) <> ''
     AND UPPER(TRIM(c.nest_id)) <> 'NO_NEST'
+    AND UPPER(TRIM(COALESCE(c.site, ''))) = 'CR'
     AND c.age = 'A'
     AND c.field_sex IN ('M', 'MU', 'F', 'FU', 'U')
     AND c.date <= sr.reference_date
@@ -1083,29 +1148,42 @@ adult_resighting_latest AS (
           )
         END AS mark,
         CASE
-          WHEN COALESCE(NULLIF(TRIM(r.UL), ''), '') = 'X'
-           AND COALESCE(NULLIF(TRIM(r.LL), ''), '') = 'X'
-           AND COALESCE(NULLIF(TRIM(r.UR), ''), '') = 'X'
-           AND COALESCE(NULLIF(TRIM(r.LR), ''), '') = 'X'
+          WHEN COALESCE(NULLIF(TRIM(r.UL), ''), '') REGEXP '^X*$'
+           AND COALESCE(NULLIF(TRIM(r.LL), ''), '') REGEXP '^X*$'
+           AND COALESCE(NULLIF(TRIM(r.UR), ''), '') REGEXP '^X*$'
+           AND COALESCE(NULLIF(TRIM(r.LR), ''), '') REGEXP '^X*$'
+           AND (
+             NULLIF(TRIM(r.UL), '') IS NOT NULL
+             OR NULLIF(TRIM(r.LL), '') IS NOT NULL
+             OR NULLIF(TRIM(r.UR), '') IS NOT NULL
+             OR NULLIF(TRIM(r.LR), '') IS NOT NULL
+           )
           THEN 1
           ELSE 0
         END AS is_confirmed_xx,
         CASE
-          WHEN COALESCE(NULLIF(TRIM(r.UL), ''), '') = 'X'
-           AND COALESCE(NULLIF(TRIM(r.LL), ''), '') = 'X'
-           AND COALESCE(NULLIF(TRIM(r.UR), ''), '') = 'X'
-           AND COALESCE(NULLIF(TRIM(r.LR), ''), '') = 'X'
+          WHEN COALESCE(NULLIF(TRIM(r.UL), ''), '') REGEXP '^X*$'
+           AND COALESCE(NULLIF(TRIM(r.LL), ''), '') REGEXP '^X*$'
+           AND COALESCE(NULLIF(TRIM(r.UR), ''), '') REGEXP '^X*$'
+           AND COALESCE(NULLIF(TRIM(r.LR), ''), '') REGEXP '^X*$'
+           AND (
+             NULLIF(TRIM(r.UL), '') IS NOT NULL
+             OR NULLIF(TRIM(r.LL), '') IS NOT NULL
+             OR NULLIF(TRIM(r.UR), '') IS NOT NULL
+             OR NULLIF(TRIM(r.LR), '') IS NOT NULL
+           )
           THEN 1
-          WHEN NULLIF(TRIM(r.UL), '') IS NOT NULL AND TRIM(r.UL) <> 'X' THEN 1
-          WHEN NULLIF(TRIM(r.LL), '') IS NOT NULL AND TRIM(r.LL) <> 'X' THEN 1
-          WHEN NULLIF(TRIM(r.UR), '') IS NOT NULL AND TRIM(r.UR) <> 'X' THEN 1
-          WHEN NULLIF(TRIM(r.LR), '') IS NOT NULL AND TRIM(r.LR) <> 'X' THEN 1
+          WHEN NULLIF(TRIM(r.UL), '') IS NOT NULL AND TRIM(r.UL) NOT REGEXP '^X+$' THEN 1
+          WHEN NULLIF(TRIM(r.LL), '') IS NOT NULL AND TRIM(r.LL) NOT REGEXP '^X+$' THEN 1
+          WHEN NULLIF(TRIM(r.UR), '') IS NOT NULL AND TRIM(r.UR) NOT REGEXP '^X+$' THEN 1
+          WHEN NULLIF(TRIM(r.LR), '') IS NOT NULL AND TRIM(r.LR) NOT REGEXP '^X+$' THEN 1
           ELSE 0
         END AS has_informative_band_obs
       FROM FIELD_2026_BADOatNZ.RESIGHTINGS r
       CROSS JOIN sr
       WHERE r.nest_id IS NOT NULL
         AND TRIM(r.nest_id) <> ''
+        AND UPPER(TRIM(COALESCE(r.site, ''))) = 'CR'
         AND r.age = 'A'
         AND r.sex IN ('M', 'MU', 'F', 'FU')
         AND r.date <= sr.reference_date
@@ -1123,6 +1201,53 @@ adult_resighting_status AS (
   FROM adult_resighting_latest
   GROUP BY nest_id
 ),
+scrape_parent_identity AS (
+  SELECT
+    r.nest_id,
+    MAX(
+      CASE
+        WHEN LEFT(r.sex, 1) = 'M'
+         AND (
+           (
+             NULLIF(TRIM(r.LL), '') IS NOT NULL
+             AND UPPER(TRIM(r.LL)) NOT REGEXP '^(X+|M)$'
+           )
+           OR (
+             NULLIF(TRIM(r.LR), '') IS NOT NULL
+             AND UPPER(TRIM(r.LR)) NOT REGEXP '^(X+|M)$'
+           )
+         )
+        THEN 1
+        ELSE 0
+      END
+    ) AS M_has_unique_scrape_resight,
+    MAX(
+      CASE
+        WHEN LEFT(r.sex, 1) = 'F'
+         AND (
+           (
+             NULLIF(TRIM(r.LL), '') IS NOT NULL
+             AND UPPER(TRIM(r.LL)) NOT REGEXP '^(X+|M)$'
+           )
+           OR (
+             NULLIF(TRIM(r.LR), '') IS NOT NULL
+             AND UPPER(TRIM(r.LR)) NOT REGEXP '^(X+|M)$'
+           )
+         )
+        THEN 1
+        ELSE 0
+      END
+    ) AS F_has_unique_scrape_resight
+  FROM FIELD_2026_BADOatNZ.RESIGHTINGS r
+  CROSS JOIN sr
+  WHERE r.nest_id IS NOT NULL
+    AND TRIM(r.nest_id) <> ''
+    AND UPPER(TRIM(COALESCE(r.site, ''))) = 'CR'
+    AND r.age = 'A'
+    AND r.sex IN ('M', 'MU', 'F', 'FU')
+    AND r.date <= sr.reference_date
+  GROUP BY r.nest_id
+),
 todo_parent_source AS (
   SELECT
     nest_id,
@@ -1131,20 +1256,20 @@ todo_parent_source AS (
   FROM (
     SELECT
       active_nests.nest_id,
-      active_nests.M_mark,
-      active_nests.F_mark
+      CAST(NULL AS CHAR(50)) AS M_mark,
+      CAST(NULL AS CHAR(50)) AS F_mark
     FROM active_nests
     UNION ALL
     SELECT
       brood_followup_nests.nest_id,
-      brood_followup_nests.M_mark,
-      brood_followup_nests.F_mark
+      CAST(NULL AS CHAR(50)) AS M_mark,
+      CAST(NULL AS CHAR(50)) AS F_mark
     FROM brood_followup_nests
     UNION ALL
     SELECT
       nota_followup_nests.nest_id,
-      nota_followup_nests.M_mark,
-      nota_followup_nests.F_mark
+      CAST(NULL AS CHAR(50)) AS M_mark,
+      CAST(NULL AS CHAR(50)) AS F_mark
     FROM nota_followup_nests
   ) todo_parent_rows
   GROUP BY nest_id
@@ -1245,6 +1370,12 @@ adult_capture_interval_status AS (
       ELSE 0
     END AS no_parent_capture_yet,
     CASE
+      WHEN adult_capture_any_timing.last_any_adult_capture_datetime
+           <= DATE_SUB(CAST(CONCAT(sr.reference_date, ' 08:00:00') AS DATETIME), INTERVAL 36 HOUR)
+      THEN 1
+      ELSE 0
+    END AS any_target_capture_window_open,
+    CASE
       WHEN MAX(CASE WHEN adult_capture_timing.sex = 'F' THEN adult_capture_timing.last_capture_datetime END)
            <= DATE_SUB(CAST(CONCAT(sr.reference_date, ' 08:00:00') AS DATETIME), INTERVAL 36 HOUR)
       THEN 1
@@ -1266,6 +1397,155 @@ adult_capture_interval_status AS (
     todo_parent_source.nest_id,
     adult_capture_any_timing.last_any_adult_capture_datetime
 ),
+adult_capture_current_clutch AS (
+  SELECT
+    active_nests.nest_id,
+    latest_clutch_history.clutch_size AS current_clutch_size,
+    latest_clutch_history.clutch_datetime AS current_clutch_datetime
+  FROM active_nests
+  JOIN latest_clutch_history
+    ON active_nests.nest_id = latest_clutch_history.nest_id
+   AND latest_clutch_history.row_num = 1
+  WHERE UPPER(TRIM(COALESCE(active_nests.nest_state, ''))) IN ('F', 'I')
+    AND latest_clutch_history.clutch_size IS NOT NULL
+    AND latest_clutch_history.clutch_size > 0
+),
+adult_capture_last_other_clutch AS (
+  SELECT
+    current_clutch.nest_id,
+    MAX(
+      CAST(
+        CONCAT(
+          history.date,
+          ' ',
+          COALESCE(history.time_visit, '00:00:00')
+        ) AS DATETIME
+      )
+    ) AS last_other_clutch_datetime
+  FROM adult_capture_current_clutch current_clutch
+  LEFT JOIN nest_history history
+    ON current_clutch.nest_id = history.nest_id
+   AND history.clutch_size IS NOT NULL
+   AND history.clutch_size <> current_clutch.current_clutch_size
+   AND CAST(
+         CONCAT(
+           history.date,
+           ' ',
+           COALESCE(history.time_visit, '00:00:00')
+         ) AS DATETIME
+       ) <= current_clutch.current_clutch_datetime
+  GROUP BY current_clutch.nest_id
+),
+adult_capture_current_clutch_start AS (
+  SELECT
+    current_clutch.nest_id,
+    current_clutch.current_clutch_size,
+    current_clutch.current_clutch_datetime,
+    MIN(
+      CAST(
+        CONCAT(
+          history.date,
+          ' ',
+          COALESCE(history.time_visit, '00:00:00')
+        ) AS DATETIME
+      )
+    ) AS current_clutch_start_datetime
+  FROM adult_capture_current_clutch current_clutch
+  JOIN nest_history history
+    ON current_clutch.nest_id = history.nest_id
+   AND history.clutch_size = current_clutch.current_clutch_size
+   AND CAST(
+         CONCAT(
+           history.date,
+           ' ',
+           COALESCE(history.time_visit, '00:00:00')
+         ) AS DATETIME
+       ) <= current_clutch.current_clutch_datetime
+  LEFT JOIN adult_capture_last_other_clutch last_other
+    ON current_clutch.nest_id = last_other.nest_id
+  WHERE last_other.last_other_clutch_datetime IS NULL
+     OR CAST(
+          CONCAT(
+            history.date,
+            ' ',
+            COALESCE(history.time_visit, '00:00:00')
+          ) AS DATETIME
+        ) > last_other.last_other_clutch_datetime
+  GROUP BY
+    current_clutch.nest_id,
+    current_clutch.current_clutch_size,
+    current_clutch.current_clutch_datetime
+),
+adult_capture_age_status AS (
+  SELECT
+    x.nest_id,
+    x.clutch_completion_basis_date,
+    x.clutch_completion_confirmed,
+    CASE
+      WHEN DATEDIFF(
+             sr.reference_date,
+             x.clutch_completion_basis_date
+           ) >= 7
+      THEN 1
+      ELSE 0
+    END AS capture_allowed_after_completion
+  FROM (
+    SELECT
+      clutch_start.nest_id,
+      CASE
+        WHEN clutch_start.current_clutch_size >= 3
+          OR DATEDIFF(
+               DATE(clutch_start.current_clutch_datetime),
+               DATE(clutch_start.current_clutch_start_datetime)
+             ) >= 3
+        THEN DATE(clutch_start.current_clutch_start_datetime)
+        ELSE DATE_ADD(
+          DATE(clutch_start.current_clutch_datetime),
+          INTERVAL (
+            2 * GREATEST(0, 3 - clutch_start.current_clutch_size)
+          ) DAY
+        )
+      END AS clutch_completion_basis_date,
+      CASE
+        WHEN clutch_start.current_clutch_size >= 3 THEN 1
+        WHEN DATEDIFF(
+               DATE(clutch_start.current_clutch_datetime),
+               DATE(clutch_start.current_clutch_start_datetime)
+             ) >= 3
+        THEN 1
+        ELSE 0
+      END AS clutch_completion_confirmed
+    FROM adult_capture_current_clutch_start clutch_start
+  ) x
+  CROSS JOIN sr
+),
+complete_clutch_processing_status AS (
+  SELECT
+    clutch_start.nest_id,
+    MAX(
+      CASE
+        WHEN n.nest_photo = '1' OR n.tent_photo = '1' THEN 1
+        ELSE 0
+      END
+    ) AS complete_clutch_has_photo,
+    MAX(
+      CASE
+        WHEN float_visit_summary.nest_id IS NOT NULL THEN 1
+        ELSE 0
+      END
+    ) AS complete_clutch_has_float
+  FROM adult_capture_current_clutch_start clutch_start
+  LEFT JOIN nest_history n
+    ON clutch_start.nest_id = n.nest_id
+   AND n.clutch_size = clutch_start.current_clutch_size
+   AND CAST(CONCAT(n.date, ' ', COALESCE(n.time_visit, '00:00:00')) AS DATETIME)
+       >= clutch_start.current_clutch_start_datetime
+  LEFT JOIN float_visit_summary
+    ON n.nest_id = float_visit_summary.nest_id
+   AND n.date = float_visit_summary.float_date
+   AND COALESCE(n.time_visit, '00:00:00') = float_visit_summary.float_time_visit
+  GROUP BY clutch_start.nest_id
+),
 todo_untrapped_parent_candidate AS (
   SELECT
     active_nests.nest_id,
@@ -1273,29 +1553,29 @@ todo_untrapped_parent_candidate AS (
     'Untrapped parent' AS todo,
     CASE
       WHEN adult_parent_status.M_confirmed_unbanded = 1
-       AND adult_parent_status.F_confirmed_unbanded = 1 THEN 'target any (both X-X)'
+       AND adult_parent_status.F_confirmed_unbanded = 1 THEN 'any (both X-X)'
       WHEN adult_parent_status.M_confirmed_unbanded = 1
-       AND adult_parent_status.F_has_geo = 1 THEN 'target M (X-X mate of GEO bird)'
+       AND adult_parent_status.F_has_geo = 1 THEN 'M (X-X; F w/GEO)'
       WHEN adult_parent_status.F_confirmed_unbanded = 1
-       AND adult_parent_status.M_has_geo = 1 THEN 'target F (X-X mate of GEO bird)'
+       AND adult_parent_status.M_has_geo = 1 THEN 'F (X-X; M w/GEO)'
       WHEN adult_parent_status.M_unknown_status = 1
-       AND adult_parent_status.F_has_geo = 1 THEN 'target M (unknown mate of GEO bird)'
+       AND adult_parent_status.F_has_geo = 1 THEN 'M (F w/GEO)'
       WHEN adult_parent_status.F_unknown_status = 1
-       AND adult_parent_status.M_has_geo = 1 THEN 'target F (unknown mate of GEO bird)'
-      WHEN adult_parent_status.M_confirmed_unbanded = 1 THEN 'target M (X-X)'
-      WHEN adult_parent_status.F_confirmed_unbanded = 1 THEN 'target F (X-X)'
+       AND adult_parent_status.M_has_geo = 1 THEN 'F (M w/GEO)'
+      WHEN adult_parent_status.M_confirmed_unbanded = 1 THEN 'M (X-X)'
+      WHEN adult_parent_status.F_confirmed_unbanded = 1 THEN 'F (X-X)'
       WHEN adult_parent_status.M_unknown_status = 1
-       AND adult_parent_status.F_unknown_status = 1 THEN 'target any (status unknown)'
-      WHEN adult_parent_status.M_unknown_status = 1 THEN 'target M (status unknown)'
-      WHEN adult_parent_status.F_unknown_status = 1 THEN 'target F (status unknown)'
+       AND adult_parent_status.F_unknown_status = 1 THEN 'any (status ?)'
+      WHEN adult_parent_status.M_unknown_status = 1 THEN 'M (status ?)'
+      WHEN adult_parent_status.F_unknown_status = 1 THEN 'F (status ?)'
       WHEN adult_parent_status.M_has_geo = 1
-       AND adult_parent_status.F_has_geo = 0 THEN 'target F (non-GEO mate)'
+       AND adult_parent_status.F_has_geo = 0 THEN 'F (no GEO; M w/GEO)'
       WHEN adult_parent_status.F_has_geo = 1
-       AND adult_parent_status.M_has_geo = 0 THEN 'target M (non-GEO mate)'
+       AND adult_parent_status.M_has_geo = 0 THEN 'M (no GEO; F w/GEO)'
       WHEN adult_parent_status.M_single_colour_recruit = 1
-       AND adult_parent_status.F_single_colour_recruit = 1 THEN 'target any recruit for full colour marks'
-      WHEN adult_parent_status.M_single_colour_recruit = 1 THEN 'target M recruit for full colour marks'
-      WHEN adult_parent_status.F_single_colour_recruit = 1 THEN 'target F recruit for full colour marks'
+       AND adult_parent_status.F_single_colour_recruit = 1 THEN 'any recruit (full colours)'
+      WHEN adult_parent_status.M_single_colour_recruit = 1 THEN 'M recruit (full colours)'
+      WHEN adult_parent_status.F_single_colour_recruit = 1 THEN 'F recruit (full colours)'
     END AS notes,
     CASE
       WHEN adult_parent_status.M_confirmed_unbanded = 1
@@ -1341,9 +1621,67 @@ todo_untrapped_parent_candidate AS (
     active_nests.brood_size,
     adult_parent_status.M_parent_mark AS M_mark,
     adult_parent_status.F_parent_mark AS F_mark,
+    adult_parent_status.M_confirmed_unbanded,
+    adult_parent_status.F_confirmed_unbanded,
+    adult_parent_status.M_unknown_status,
+    adult_parent_status.F_unknown_status,
+    adult_parent_status.M_has_geo,
+    adult_parent_status.F_has_geo,
+    adult_parent_status.M_single_colour_recruit,
+    adult_parent_status.F_single_colour_recruit,
     adult_capture_interval_status.no_parent_capture_yet,
+    adult_capture_interval_status.any_target_capture_window_open,
     adult_capture_interval_status.M_target_capture_window_open,
     adult_capture_interval_status.F_target_capture_window_open,
+    adult_capture_age_status.capture_allowed_after_completion,
+    CASE
+      WHEN adult_parent_status.M_unknown_status = 1
+        OR adult_parent_status.F_unknown_status = 1
+      THEN 1
+      ELSE 0
+    END AS resight_only_when_capture_blocked,
+    CASE
+      WHEN (
+        (adult_parent_status.M_confirmed_unbanded = 1 AND adult_parent_status.F_confirmed_unbanded = 1)
+        OR (adult_parent_status.M_unknown_status = 1 AND adult_parent_status.F_unknown_status = 1)
+        OR (adult_parent_status.M_single_colour_recruit = 1 AND adult_parent_status.F_single_colour_recruit = 1)
+      )
+      THEN CASE
+        WHEN COALESCE(adult_capture_interval_status.no_parent_capture_yet, 0) = 1
+          OR COALESCE(adult_capture_interval_status.any_target_capture_window_open, 0) = 1
+        THEN 1
+        ELSE 0
+      END
+      WHEN (
+        (adult_parent_status.M_confirmed_unbanded = 1 AND adult_parent_status.F_has_geo = 1)
+        OR (adult_parent_status.M_unknown_status = 1 AND adult_parent_status.F_has_geo = 1)
+        OR adult_parent_status.M_confirmed_unbanded = 1
+        OR adult_parent_status.M_unknown_status = 1
+        OR (adult_parent_status.F_has_geo = 1 AND adult_parent_status.M_has_geo = 0)
+        OR adult_parent_status.M_single_colour_recruit = 1
+      )
+      THEN CASE
+        WHEN COALESCE(adult_capture_interval_status.no_parent_capture_yet, 0) = 1
+          OR COALESCE(adult_capture_interval_status.M_target_capture_window_open, 0) = 1
+        THEN 1
+        ELSE 0
+      END
+      WHEN (
+        (adult_parent_status.F_confirmed_unbanded = 1 AND adult_parent_status.M_has_geo = 1)
+        OR (adult_parent_status.F_unknown_status = 1 AND adult_parent_status.M_has_geo = 1)
+        OR adult_parent_status.F_confirmed_unbanded = 1
+        OR adult_parent_status.F_unknown_status = 1
+        OR (adult_parent_status.M_has_geo = 1 AND adult_parent_status.F_has_geo = 0)
+        OR adult_parent_status.F_single_colour_recruit = 1
+      )
+      THEN CASE
+        WHEN COALESCE(adult_capture_interval_status.no_parent_capture_yet, 0) = 1
+          OR COALESCE(adult_capture_interval_status.F_target_capture_window_open, 0) = 1
+        THEN 1
+        ELSE 0
+      END
+      ELSE 0
+    END AS capture_interval_open,
     active_nests.lat,
     active_nests.lon
   FROM active_nests
@@ -1351,9 +1689,18 @@ todo_untrapped_parent_candidate AS (
     ON active_nests.nest_id = adult_parent_status.nest_id
   LEFT JOIN adult_capture_interval_status
     ON active_nests.nest_id = adult_capture_interval_status.nest_id
+  LEFT JOIN adult_capture_age_status
+    ON active_nests.nest_id = adult_capture_age_status.nest_id
   LEFT JOIN nest_discovery
     ON active_nests.nest_id = nest_discovery.nest_id
-  WHERE active_nests.nest_state IN ('F', 'I')
+  LEFT JOIN float_summary
+    ON active_nests.nest_id = float_summary.nest_id
+  WHERE UPPER(TRIM(COALESCE(active_nests.nest_state, ''))) IN ('F', 'I')
+    AND (
+      UPPER(TRIM(COALESCE(active_nests.nest_state, ''))) <> 'F'
+      OR COALESCE(active_nests.clutch_size, 0) <> 3
+      OR COALESCE(float_summary.n_float_rows, 0) > 0
+    )
     AND (
       adult_parent_status.M_confirmed_unbanded = 1
       OR adult_parent_status.F_confirmed_unbanded = 1
@@ -1370,7 +1717,168 @@ todo_untrapped_parent AS (
     nest_id,
     reference_date,
     todo,
-    notes,
+    CASE
+      WHEN COALESCE(M_confirmed_unbanded, 0) = 1
+       AND COALESCE(F_confirmed_unbanded, 0) = 1
+      THEN 'capture any (both X-X)'
+      WHEN COALESCE(M_confirmed_unbanded, 0) = 1
+       AND COALESCE(F_unknown_status, 0) = 1
+      THEN CONCAT(
+        CASE
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 1
+           AND COALESCE(capture_interval_open, 0) = 1
+          THEN 'resight/capture F; '
+          ELSE 'resight F; '
+        END,
+        'capture X-X M',
+        CASE
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 1
+           AND COALESCE(capture_interval_open, 0) = 1 THEN ''
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 0
+           AND COALESCE(capture_interval_open, 0) = 0 THEN '; 7d+36hr'
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 0 THEN '; 7d rule'
+          WHEN COALESCE(capture_interval_open, 0) = 0 THEN '; 36hr rule'
+          ELSE ''
+        END
+      )
+      WHEN COALESCE(F_confirmed_unbanded, 0) = 1
+       AND COALESCE(M_unknown_status, 0) = 1
+      THEN CONCAT(
+        CASE
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 1
+           AND COALESCE(capture_interval_open, 0) = 1
+          THEN 'resight/capture M; '
+          ELSE 'resight M; '
+        END,
+        'capture X-X F',
+        CASE
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 1
+           AND COALESCE(capture_interval_open, 0) = 1 THEN ''
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 0
+           AND COALESCE(capture_interval_open, 0) = 0 THEN '; 7d+36hr'
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 0 THEN '; 7d rule'
+          WHEN COALESCE(capture_interval_open, 0) = 0 THEN '; 36hr rule'
+          ELSE ''
+        END
+      )
+      WHEN COALESCE(M_confirmed_unbanded, 0) = 1
+       AND COALESCE(F_has_geo, 0) = 1
+      THEN 'capture X-X M (F w/GEO)'
+      WHEN COALESCE(F_confirmed_unbanded, 0) = 1
+       AND COALESCE(M_has_geo, 0) = 1
+      THEN 'capture X-X F (M w/GEO)'
+      WHEN COALESCE(M_confirmed_unbanded, 0) = 1
+      THEN 'capture X-X M'
+      WHEN COALESCE(F_confirmed_unbanded, 0) = 1
+      THEN 'capture X-X F'
+      WHEN COALESCE(M_unknown_status, 0) = 1
+       AND COALESCE(F_unknown_status, 0) = 1
+      THEN CONCAT(
+        CASE
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 1
+           AND COALESCE(capture_interval_open, 0) = 1
+          THEN 'resight/capture any (status ?)'
+          ELSE 'resight any (status ?)'
+        END,
+        CASE
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 1
+           AND COALESCE(capture_interval_open, 0) = 1 THEN ''
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 0
+           AND COALESCE(capture_interval_open, 0) = 0 THEN '; 7d+36hr'
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 0 THEN '; 7d rule'
+          WHEN COALESCE(capture_interval_open, 0) = 0 THEN '; 36hr rule'
+          ELSE ''
+        END
+      )
+      WHEN COALESCE(M_unknown_status, 0) = 1
+       AND COALESCE(F_has_geo, 0) = 1
+      THEN CONCAT(
+        CASE
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 1
+           AND COALESCE(capture_interval_open, 0) = 1
+          THEN 'resight/capture M (F w/GEO)'
+          ELSE 'resight M (F w/GEO)'
+        END,
+        CASE
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 1
+           AND COALESCE(capture_interval_open, 0) = 1 THEN ''
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 0
+           AND COALESCE(capture_interval_open, 0) = 0 THEN '; 7d+36hr'
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 0 THEN '; 7d rule'
+          WHEN COALESCE(capture_interval_open, 0) = 0 THEN '; 36hr rule'
+          ELSE ''
+        END
+      )
+      WHEN COALESCE(F_unknown_status, 0) = 1
+       AND COALESCE(M_has_geo, 0) = 1
+      THEN CONCAT(
+        CASE
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 1
+           AND COALESCE(capture_interval_open, 0) = 1
+          THEN 'resight/capture F (M w/GEO)'
+          ELSE 'resight F (M w/GEO)'
+        END,
+        CASE
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 1
+           AND COALESCE(capture_interval_open, 0) = 1 THEN ''
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 0
+           AND COALESCE(capture_interval_open, 0) = 0 THEN '; 7d+36hr'
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 0 THEN '; 7d rule'
+          WHEN COALESCE(capture_interval_open, 0) = 0 THEN '; 36hr rule'
+          ELSE ''
+        END
+      )
+      WHEN COALESCE(M_unknown_status, 0) = 1
+      THEN CONCAT(
+        CASE
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 1
+           AND COALESCE(capture_interval_open, 0) = 1
+          THEN 'resight/capture M (status ?)'
+          ELSE 'resight M (status ?)'
+        END,
+        CASE
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 1
+           AND COALESCE(capture_interval_open, 0) = 1 THEN ''
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 0
+           AND COALESCE(capture_interval_open, 0) = 0 THEN '; 7d+36hr'
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 0 THEN '; 7d rule'
+          WHEN COALESCE(capture_interval_open, 0) = 0 THEN '; 36hr rule'
+          ELSE ''
+        END
+      )
+      WHEN COALESCE(F_unknown_status, 0) = 1
+      THEN CONCAT(
+        CASE
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 1
+           AND COALESCE(capture_interval_open, 0) = 1
+          THEN 'resight/capture F (status ?)'
+          ELSE 'resight F (status ?)'
+        END,
+        CASE
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 1
+           AND COALESCE(capture_interval_open, 0) = 1 THEN ''
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 0
+           AND COALESCE(capture_interval_open, 0) = 0 THEN '; 7d+36hr'
+          WHEN COALESCE(capture_allowed_after_completion, 0) = 0 THEN '; 7d rule'
+          WHEN COALESCE(capture_interval_open, 0) = 0 THEN '; 36hr rule'
+          ELSE ''
+        END
+      )
+      WHEN COALESCE(M_has_geo, 0) = 1
+       AND COALESCE(F_has_geo, 0) = 0
+      THEN 'capture F (no GEO; M w/GEO)'
+      WHEN COALESCE(F_has_geo, 0) = 1
+       AND COALESCE(M_has_geo, 0) = 0
+      THEN 'capture M (no GEO; F w/GEO)'
+      WHEN COALESCE(M_single_colour_recruit, 0) = 1
+       AND COALESCE(F_single_colour_recruit, 0) = 1
+      THEN 'capture any recruit (full colours)'
+      WHEN COALESCE(M_single_colour_recruit, 0) = 1
+      THEN 'capture M recruit (full colours)'
+      WHEN COALESCE(F_single_colour_recruit, 0) = 1
+      THEN 'capture F recruit (full colours)'
+      ELSE notes
+    END AS notes,
     days_overdue,
     priority,
     min_days_to_hatch,
@@ -1383,23 +1891,13 @@ todo_untrapped_parent AS (
     lat,
     lon
   FROM todo_untrapped_parent_candidate
-  WHERE (
-      target_parent = 'A'
-      AND COALESCE(no_parent_capture_yet, 0) = 1
-    )
-     OR (
-      target_parent = 'M'
-      AND (
-        COALESCE(no_parent_capture_yet, 0) = 1
-        OR COALESCE(M_target_capture_window_open, 0) = 1
+  WHERE target_parent IN ('A', 'M', 'F')
+    AND (
+      (
+        COALESCE(capture_allowed_after_completion, 0) = 1
+        AND COALESCE(capture_interval_open, 0) = 1
       )
-    )
-     OR (
-      target_parent = 'F'
-      AND (
-        COALESCE(no_parent_capture_yet, 0) = 1
-        OR COALESCE(F_target_capture_window_open, 0) = 1
-      )
+      OR COALESCE(resight_only_when_capture_blocked, 0) = 1
     )
 ),
 todo_unprocessed_nest AS (
@@ -1408,13 +1906,19 @@ todo_unprocessed_nest AS (
     active_nests.reference_date,
     'Unprocessed nest' AS todo,
     CASE
-      WHEN processing_summary.n_float_rows = 0
-       AND processing_summary.n_photo_rows = 0 THEN 'float + photos'
-      WHEN processing_summary.n_float_rows = 0 THEN 'float only'
-      WHEN processing_summary.n_photo_rows = 0 THEN 'photos only'
+      WHEN COALESCE(complete_clutch_processing_status.complete_clutch_has_float, 0) = 0
+       AND COALESCE(complete_clutch_processing_status.complete_clutch_has_photo, 0) = 0 THEN 'float + photos'
+      WHEN COALESCE(complete_clutch_processing_status.complete_clutch_has_float, 0) = 0 THEN 'float only'
+      WHEN COALESCE(complete_clutch_processing_status.complete_clutch_has_photo, 0) = 0 THEN 'photos only'
     END AS notes,
-    DATEDIFF(active_nests.reference_date, processing_summary.first_processable_date) AS days_overdue,
-    200 + DATEDIFF(active_nests.reference_date, processing_summary.first_processable_date) AS priority,
+    DATEDIFF(
+      active_nests.reference_date,
+      adult_capture_age_status.clutch_completion_basis_date
+    ) AS days_overdue,
+    200 + DATEDIFF(
+      active_nests.reference_date,
+      adult_capture_age_status.clutch_completion_basis_date
+    ) AS priority,
     active_nests.min_days_to_hatch,
     active_nests.days_ago AS last_visit_days_ago,
     active_nests.nest_state,
@@ -1429,10 +1933,15 @@ todo_unprocessed_nest AS (
     ON active_nests.nest_id = processing_summary.nest_id
   LEFT JOIN adult_parent_status
     ON active_nests.nest_id = adult_parent_status.nest_id
-  WHERE active_nests.nest_state IN ('F', 'I')
+  LEFT JOIN adult_capture_age_status
+    ON active_nests.nest_id = adult_capture_age_status.nest_id
+  LEFT JOIN complete_clutch_processing_status
+    ON active_nests.nest_id = complete_clutch_processing_status.nest_id
+  WHERE UPPER(TRIM(COALESCE(active_nests.nest_state, ''))) IN ('F', 'I')
+    AND COALESCE(adult_capture_age_status.clutch_completion_confirmed, 0) = 1
     AND (
-      processing_summary.n_float_rows = 0
-      OR processing_summary.n_photo_rows = 0
+      COALESCE(complete_clutch_processing_status.complete_clutch_has_float, 0) = 0
+      OR COALESCE(complete_clutch_processing_status.complete_clutch_has_photo, 0) = 0
     )
 ),
 todo_take_scrape_photos AS (
@@ -1465,8 +1974,14 @@ todo_take_scrape_photos AS (
     ON active_nests.nest_id = nest_discovery.nest_id
   LEFT JOIN adult_parent_status
     ON active_nests.nest_id = adult_parent_status.nest_id
-  WHERE active_nests.nest_state = 'S'
+  LEFT JOIN scrape_parent_identity
+    ON active_nests.nest_id = scrape_parent_identity.nest_id
+  WHERE UPPER(TRIM(COALESCE(active_nests.nest_state, ''))) = 'S'
     AND COALESCE(photo_summary.n_photo_rows, 0) = 0
+    AND (
+      COALESCE(scrape_parent_identity.M_has_unique_scrape_resight, 0) = 1
+      OR COALESCE(scrape_parent_identity.F_has_unique_scrape_resight, 0) = 1
+    )
 ),
 todo_reprocess_nest AS (
   SELECT
@@ -1513,28 +2028,8 @@ todo_reprocess_nest AS (
 ),
 nest_check_rules AS (
   SELECT
-    20 AS start_day_after_completion,
+    10 AS start_days_before_hatch,
     2 AS repeat_interval_days
-),
-nest_check_target_nests AS (
-  SELECT
-    nest_id
-  FROM active_nests
-  WHERE nest_state = 'I'
-),
-nest_check_schedule AS (
-  SELECT
-    e.nest_id,
-    MAX(
-      DATE_SUB(
-        e.float_date,
-        INTERVAL ROUND(e.predicted_days_since_laying) DAY
-      )
-    ) AS estimated_clutch_completion_date
-  FROM FIELD_2026_BADOatNZ.EGGS_HATCH_PREDICTION e
-  JOIN nest_check_target_nests
-    ON e.nest_id = nest_check_target_nests.nest_id
-  GROUP BY e.nest_id
 ),
 todo_nest_check AS (
   SELECT
@@ -1547,20 +2042,19 @@ todo_nest_check AS (
     END AS notes,
     CASE
       WHEN active_nests.hatch_signs_present = 1 THEN GREATEST(0, active_nests.days_ago - 1)
-      ELSE GREATEST(0, active_nests.days_ago - nest_check_rules.repeat_interval_days)
+      ELSE GREATEST(
+        0,
+        nest_check_rules.start_days_before_hatch - CEILING(active_nests.min_days_to_hatch)
+      )
     END AS days_overdue,
     CASE
       WHEN active_nests.hatch_signs_present = 1 THEN
         500 + GREATEST(0, active_nests.days_ago - 1)
       ELSE
         300
-        + GREATEST(0, active_nests.days_ago - nest_check_rules.repeat_interval_days)
         + GREATEST(
             0,
-            DATEDIFF(
-              active_nests.reference_date,
-              nest_check_schedule.estimated_clutch_completion_date
-            ) - nest_check_rules.start_day_after_completion
+            nest_check_rules.start_days_before_hatch - CEILING(active_nests.min_days_to_hatch)
           )
     END AS priority,
     active_nests.min_days_to_hatch,
@@ -1574,8 +2068,6 @@ todo_nest_check AS (
     active_nests.lon
   FROM active_nests
   CROSS JOIN nest_check_rules
-  LEFT JOIN nest_check_schedule
-    ON active_nests.nest_id = nest_check_schedule.nest_id
   LEFT JOIN adult_parent_status
     ON active_nests.nest_id = adult_parent_status.nest_id
   WHERE (active_nests.clutch_size IS NULL OR active_nests.clutch_size > 0)
@@ -1586,11 +2078,8 @@ todo_nest_check AS (
       )
       OR (
         active_nests.nest_state = 'I'
-        AND nest_check_schedule.estimated_clutch_completion_date IS NOT NULL
-        AND DATEDIFF(
-              active_nests.reference_date,
-              nest_check_schedule.estimated_clutch_completion_date
-            ) >= nest_check_rules.start_day_after_completion
+        AND active_nests.min_days_to_hatch IS NOT NULL
+        AND CEILING(active_nests.min_days_to_hatch) <= nest_check_rules.start_days_before_hatch
         AND active_nests.days_ago >= nest_check_rules.repeat_interval_days
       )
     )

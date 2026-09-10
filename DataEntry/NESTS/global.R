@@ -51,6 +51,6 @@ dropdowns <- list(
     "WS"
   ),
   nest_state = c("S", "F", "I", "H", "pP", "pD", "P", "D", "notA", "O"),
-  bird_inc = c("M", "F", "U", "E"),
+  bird_inc = c("M", "F", "FM", "MF", "U", "E"),
   observer = observers
 )
