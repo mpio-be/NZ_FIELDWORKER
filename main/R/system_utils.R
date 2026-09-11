@@ -2,18 +2,41 @@
   if (is.null(x) || !length(x)) y else x
 }
 
-DBq <- function(x) {
-  o <- try(db_get(x), silent = TRUE)
+# We need SET SESSION optimizer_switch = 'derived_merge=off' for very complex Views;
+
+DBq <- function(x, params = NULL, derived_merge_off = FALSE) {
+  o <- try(
+    {
+      con <- db_con()
+      on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+      if (derived_merge_off) {
+        DBI::dbExecute(
+          con,
+          "SET SESSION optimizer_switch = 'derived_merge=off'"
+        )
+      }
+
+      if (is.null(params)) {
+        DBI::dbGetQuery(con, x)
+      } else {
+        DBI::dbGetQuery(con, x, params = params)
+      }
+    },
+    silent = TRUE
+  )
 
   if (inherits(o, "try-error")) {
     err <- as.character(attributes(o)$condition)
+
     if (isRunning()) {
       showNotification(str_trunc(x, 30), type = "error")
     }
+
     return(data.table(error = err))
-  } else {
-    return(data.table(o))
   }
+
+  data.table(o)
 }
 
 
@@ -125,8 +148,9 @@ showTable <- function(tab, exclude = c("pk", "nov"), formatDate = TRUE) {
       cc <- cc[!Field %in% exclude]
 
       o <- data.table(
-        db_get(
-          glue("SELECT {glue_collapse(cc$Field, sep = ', ')} FROM {tab};")
+        DBq(
+          glue("SELECT {glue_collapse(cc$Field, sep = ', ')} FROM {tab};"),
+          derived_merge_off = TRUE
         )
       )
 

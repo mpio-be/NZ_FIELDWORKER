@@ -62,7 +62,6 @@ dbtabs_show_tables <- c(
   "RESIGHTINGS",
   "RESIGHTINGS_PUBLIC",
   "GPS_POINTS",
-  "GPS_TRACKS",
   "settings",
   "predict_hatching"
 )
@@ -150,4 +149,4 @@ kmz_nest_state_cols <- c(
 
 #! etc
 
-ver <- "v 4.2.4"
+ver <- "v 4.2.5"
