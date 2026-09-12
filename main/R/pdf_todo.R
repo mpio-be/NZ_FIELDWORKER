@@ -125,6 +125,14 @@ todo_pdf_heading <- function(todo_name) {
       title = "Nests with parents to capture or resight",
       subtitle = "band unmarked parents or determine identity with resighting"
     ),
+    "Parent capture" = list(
+      title = "Nests to capture",
+      subtitle = "capture target parents once nest-age and 36-hour rules allow"
+    ),
+    "Parent resighting" = list(
+      title = "Nests to resight",
+      subtitle = "confirm parent identity or association with the nest"
+    ),
     "nest check" = list(
       title = "Nests to check for potential hatch",
       subtitle = NULL
@@ -132,6 +140,10 @@ todo_pdf_heading <- function(todo_name) {
     "take scrape photos" = list(
       title = "Take scrape photos",
       subtitle = NULL
+    ),
+    "Clutch check" = list(
+      title = "Nests to check for additional eggs",
+      subtitle = "revisit to confirm whether the clutch has increased"
     ),
     "notA nest-check" = list(
       title = "Nests requiring a 'notA' closure visit",
@@ -144,8 +156,35 @@ todo_pdf_heading <- function(todo_name) {
   )
 }
 
+todo_pdf_note_key <- function() {
+  c(
+    "```{=typst}",
+    "#v(-0.4em)",
+    "#block(",
+    "  width: 100%,",
+    "  fill: rgb(\"#f4f7f7\"),",
+    "  stroke: 0.45pt + rgb(\"#71858a\"),",
+    "  radius: 2pt,",
+    "  inset: (x: 6pt, y: 4pt),",
+    ")[",
+    "  #set text(size: 7.4pt)",
+    "  #set par(leading: 0.35em)",
+    "  *Note key* \\",
+    "  #grid(",
+    "    columns: (1fr, 1fr),",
+    "    gutter: 9pt,",
+    "    [*7d rule:* Resighting only. Capture is not allowed until at least 7 days after estimated clutch completion. #linebreak() *36hr rule:* Resighting only. Another parent cannot be captured until 08:00 on the reference day is at least 36 hours after the previous parent capture at that nest.],",
+    "    [*MM cap:* The bird was captured away from the nest using method MM. An at-nest resighting with IN or NM behaviour is needed to confirm its association. #linebreak() *M/F w/GEO:* The confirmed male/female parent carries a geolocator. #linebreak() *Status ?:* That parent's identity or band status is unknown. Resighting is needed to determine whether capture is required.],",
+    "  )",
+    "]",
+    "#v(0.3em)",
+    "```",
+    ""
+  )
+}
+
 todo_pdf_body <- function(rows, team_marks = NULL) {
-  out <- character()
+  out <- todo_pdf_note_key()
   if (!nrow(rows)) {
     out <- c(out, "No to-do items.", "")
   } else {
